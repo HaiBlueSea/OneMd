@@ -1,0 +1,67 @@
+import Foundation
+
+/// Safe resource bundle accessor that avoids the fatalError in SPM's generated Bundle.module.
+///
+/// SPM's auto-generated `Bundle.module` places the resource bundle at the `.app` root
+/// (e.g., `MarkView.app/MarkView_MarkViewCore.bundle`), which is outside `Contents/`.
+/// This fails under macOS app translocation (Gatekeeper security feature) because
+/// translocation only copies the `Contents/` subtree, leaving the root-level bundle behind.
+///
+/// Resources are declared in Package.swift's MarkViewCore target, so the SPM bundle name
+/// is `MarkView_MarkViewCore.bundle`. The legacy `MarkView_MarkView.bundle` name is kept
+/// as a fallback for any older builds that haven't been regenerated yet.
+///
+/// This accessor checks multiple locations in priority order, trying each bundle name:
+/// 1. `Contents/Resources/` — standard macOS .app location, survives translocation
+/// 2. `.app` root — where SPM's Bundle.module expects it (backward compat)
+/// 3. SPM build directory — for `swift run` during development
+/// 4. `Bundle.main` — Xcode/XcodeGen builds copy resources directly into Contents/Resources/
+///
+/// Lives in MarkViewAppCore (moved from the Xcode app target, mar-033) so that
+/// process-wide caches like `JSBundleCache` are reachable from MarkViewTestRunner.
+/// Behavior is identical in-app: all lookups are relative to `Bundle.main`.
+public enum ResourceBundle {
+    public static let bundle: Bundle? = {
+        // MarkView_MarkViewCore.bundle = SPM resources declared in Package.swift MarkViewCore target.
+        // MarkView_MarkView.bundle = legacy fallback for older builds.
+        let bundleNames = ["MarkView_MarkViewCore.bundle", "MarkView_MarkView.bundle"]
+
+        for bundleName in bundleNames {
+            // 1. Standard macOS location: Contents/Resources/ (survives translocation + code signing)
+            let resourcesPath = Bundle.main.bundlePath + "/Contents/Resources/" + bundleName
+            if let bundle = Bundle(path: resourcesPath) {
+                return bundle
+            }
+
+            // 2. App root (SPM's default expectation for Bundle.module)
+            let rootPath = Bundle.main.bundleURL.appendingPathComponent(bundleName).path
+            if let bundle = Bundle(path: rootPath) {
+                return bundle
+            }
+
+            // 3. Adjacent to executable (for swift run / SPM development)
+            let adjacentPath = Bundle.main.bundleURL.appendingPathComponent(bundleName).path
+            if let bundle = Bundle(path: adjacentPath) {
+                return bundle
+            }
+        }
+
+        // 4. Fall back to Bundle.main — Xcode/XcodeGen builds copy resources directly
+        // into Contents/Resources/ (no SPM .bundle wrapper). This is the standard
+        // macOS app bundle layout.
+        return Bundle.main
+    }()
+
+    /// Load a resource URL, returning nil instead of crashing if the bundle is missing.
+    /// Tries with the given subdirectory first, then without it (Xcode builds place
+    /// resources directly in Contents/Resources/, not in a Resources/ subfolder).
+    public static func url(forResource name: String, withExtension ext: String, subdirectory: String? = nil) -> URL? {
+        if let url = bundle?.url(forResource: name, withExtension: ext, subdirectory: subdirectory) {
+            return url
+        }
+        if subdirectory != nil, let url = bundle?.url(forResource: name, withExtension: ext) {
+            return url
+        }
+        return nil
+    }
+}

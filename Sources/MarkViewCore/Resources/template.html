@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Required by WKWebView for reliable dark mode: both this meta tag AND the CSS
+         color-scheme property in :root are needed. Without this meta tag, scrollbars,
+         form controls, and system colors stay light regardless of @media queries. -->
+    <meta name="color-scheme" content="light dark">
+    <style id="app-css">
+        /* ── CSS custom properties ────────────────────────────────────────────
+           Single source of truth for all theme colors. Light values here;
+           dark values in @media block below. Using var() everywhere means
+           no cascade/specificity fights between base rules and media queries —
+           which was causing table rows to stay white in dark mode. */
+        :root {
+            color-scheme: dark;
+
+            /* Canvas */
+            --color-canvas-default:  #252833;
+            --color-canvas-subtle:   #30333d;
+            --color-canvas-inset:    #20222b;
+
+            /* Foreground */
+            --color-fg-default:      #dcdfe4;
+            --color-fg-muted:        #a0a4af;
+            --color-fg-subtle:       #a0a4af;
+
+            /* Borders */
+            --color-border-default:  #3d414d;
+            --color-border-muted:    #3d414d;
+
+            /* Accent */
+            --color-accent-fg:       #80a9d8;
+
+            /* Code */
+            --color-code-bg:         #20222b;
+        }
+
+        html { overflow-x: clip; }
+        article { min-width: 0; }
+
+        body {
+            /* system-ui triggers OS-level font cascade for ALL scripts (CJK, Arabic, emoji).
+               -apple-system alone maps to San Francisco which has limited non-Latin coverage.
+               Explicit CJK/Arabic fallbacks ensure rendering in iOS WKWebView loadHTMLString. */
+            font-family: system-ui, -apple-system, BlinkMacSystemFont,
+                         "PingFang SC", "PingFang TC", "PingFang HK",
+                         "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+                         "Noto Sans CJK SC", "Noto Sans",
+                         "Geeza Pro",
+                         "Segoe UI", Helvetica, Arial, sans-serif,
+                         "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji";
+            font-size: 16px;
+            line-height: 1.6;
+            word-wrap: break-word;
+            overflow-wrap: anywhere;
+            max-width: none;
+            width: 100%;
+            margin: 0 auto;
+            padding: 32px 24px;
+            color: var(--color-fg-default);
+            background: var(--color-canvas-default);
+            box-sizing: border-box;
+        }
+
+        .token.comment, .token.prolog, .token.doctype, .token.cdata { color: #8b949e; }
+        .token.punctuation { color: #e6edf3; }
+        .token.property, .token.tag, .token.boolean, .token.number, .token.constant, .token.symbol, .token.deleted { color: #79c0ff; }
+        .token.selector, .token.attr-name, .token.string, .token.char, .token.builtin, .token.inserted { color: #a5d6ff; }
+        .token.operator, .token.entity, .token.url { color: #e6edf3; }
+        .token.atrule, .token.attr-value, .token.keyword { color: #ff7b72; }
+        .token.function, .token.class-name { color: #d2a8ff; }
+        .token.regex, .token.important, .token.variable { color: #ffa657; }
+
+        /* Headings */
+        h1, h2, h3, h4, h5, h6 { margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25; color: var(--color-fg-default); }
+        h1 { font-size: 2em; padding-bottom: 0.3em; border-bottom: 1px solid var(--color-border-default); }
+        h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid var(--color-border-default); }
+        h3 { font-size: 1.25em; }
+        h4 { font-size: 1em; }
+        h5 { font-size: 0.875em; }
+        h6 { font-size: 0.85em; color: var(--color-fg-muted); }
+
+        /* Paragraphs and inline */
+        p { margin-top: 0; margin-bottom: 16px; }
+        a { color: var(--color-accent-fg); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        strong { font-weight: 600; }
+
+        /* Code */
+        code:not([class*="language-"]) {
+            background: #343942;
+            padding: 0.2em 0.4em;
+            border-radius: 6px;
+            font-size: 85%;
+            color: var(--color-fg-default);
+        }
+        code {
+            font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        }
+        pre {
+            background: var(--color-code-bg);
+            color: var(--color-fg-default);
+            padding: 16px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+            font-size: 85%;
+            line-height: 1.45;
+            margin-bottom: 16px;
+        }
+        pre code {
+            background: none !important;
+            padding: 0;
+            border-radius: 0;
+            font-size: 100%;
+            display: block;
+        }
+
+        /* Tables — CSS vars prevent cascade conflicts in all rendering engines */
+        .table-wrapper { max-width: 100%; margin-bottom: 16px; }
+        table { border-spacing: 0; border-collapse: collapse; display: table; width: 100%; table-layout: fixed; font-variant: tabular-nums; margin-bottom: 0; }
+        th, td { overflow-wrap: anywhere; padding: 6px 13px; border: 1px solid var(--color-border-muted); color: var(--color-fg-default); }
+        th { font-weight: 600; background-color: var(--color-canvas-subtle); }
+        tr { background-color: var(--color-canvas-default); border-top: 1px solid var(--color-border-muted); }
+        tr:nth-child(2n) { background-color: var(--color-canvas-subtle); }
+
+        /* Blockquotes */
+        blockquote { border-left: 4px solid var(--color-border-default); margin: 0 0 16px 0; padding: 8px 16px; color: var(--color-fg-muted); background: var(--color-canvas-subtle); }
+
+        /* Lists */
+        ul, ol { padding-left: 2em; margin-top: 0; margin-bottom: 16px; }
+        li + li { margin-top: 0.25em; }
+        li > p { margin-top: 16px; }
+
+        /* Task lists */
+        ul.contains-task-list { list-style: none; padding-left: 0; }
+        .task-list-item { list-style: none; }
+        input[type="checkbox"] { margin-right: 0.5em; vertical-align: middle; }
+
+        /* Horizontal rules */
+        hr { border: none; border-top: 1px solid var(--color-border-default); margin: 24px 0; }
+
+        /* Images */
+        img { max-width: 100%; height: auto; }
+
+        /* Details */
+        details { margin-bottom: 16px; }
+        details summary { cursor: pointer; font-weight: 600; }
+
+        /* Footnotes */
+        .footnotes { font-size: 0.875em; border-top: 1px solid var(--color-border-default); margin-top: 24px; padding-top: 16px; }
+
+        /* Focus indicators */
+        :focus-visible { outline: 2px solid var(--color-accent-fg); outline-offset: 2px; }
+        a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+        /* RTL support */
+        [dir="rtl"] { text-align: right; }
+        [dir="rtl"] blockquote { border-left: none; border-right: 4px solid #d0d7de; padding: 0 16px 0 0; }
+        [dir="rtl"] ul, [dir="rtl"] ol { padding-left: 0; padding-right: 2em; }
+
+        /* Mermaid diagrams */
+        .mermaid { text-align: center; margin-bottom: 16px; overflow-x: auto; }
+        /* width/height attrs removed by JS post-processing so viewBox scales with zoom */
+        .mermaid svg { width: 100%; max-width: 100%; height: auto; display: block; margin: 0 auto; }
+
+        /* GFM Alert callouts ([!NOTE], [!WARNING], etc.) */
+        .alert { border-radius: 6px; padding: 12px 16px; margin-bottom: 16px; border: 1px solid; }
+        .alert p { margin: 0; }
+        .alert-title { font-weight: 600; margin-bottom: 6px !important; display: flex; align-items: center; gap: 6px; }
+        .alert-note      { background: #0d2d6b; border-color: #1f6feb; color: #cae8ff; }
+        .alert-tip       { background: #062d0f; border-color: #238636; color: #aff5b4; }
+        .alert-important { background: #21003d; border-color: #8957e5; color: #d2a8ff; }
+        .alert-warning   { background: #2d1e00; border-color: #9e6a03; color: #e3b341; }
+        .alert-caution   { background: #300b0b; border-color: #da3633; color: #ffa198; }
+
+        /* TOC sidebar */
+        #toc-sidebar {
+            position: fixed; top: 0; right: 0; width: 220px; height: 100vh;
+            overflow-y: auto; padding: 20px 14px;
+            font-size: 12.5px; line-height: 1.5;
+            background: rgba(255,255,255,0.92); backdrop-filter: blur(8px);
+            border-left: 1px solid #d0d7de;
+            box-sizing: border-box; z-index: 100;
+            transition: opacity 0.2s;
+        }
+        #toc-sidebar.hidden { display: none; }
+        #toc-sidebar ul { list-style: none; margin: 0; padding: 0; }
+        #toc-sidebar li { margin: 0; }
+        #toc-sidebar a {
+            display: block; padding: 2px 0 2px 0;
+            color: #57606a; text-decoration: none;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        #toc-sidebar a:hover { color: #0969da; }
+        #toc-sidebar a.active { color: #0969da; font-weight: 600; }
+        #toc-sidebar .toc-h1 { padding-left: 0; }
+        #toc-sidebar .toc-h2 { padding-left: 10px; }
+        #toc-sidebar .toc-h3 { padding-left: 20px; font-size: 12px; }
+        #toc-sidebar .toc-h4 { padding-left: 30px; font-size: 11.5px; color: #8c959f; }
+        #toc-sidebar .toc-title {
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+            letter-spacing: 0.06em; color: #8c959f; margin-bottom: 8px;
+        }
+        body.has-toc { padding-right: 240px; }
+        @media (prefers-color-scheme: dark) {
+            #toc-sidebar {
+                background: rgba(13,17,23,0.92);
+                border-left-color: #3d444d;
+            }
+            #toc-sidebar a { color: #8b949e; }
+            #toc-sidebar a:hover, #toc-sidebar a.active { color: #58a6ff; }
+            #toc-sidebar .toc-h4 { color: #6e7681; }
+            #toc-sidebar .toc-title { color: #6e7681; }
+        }
+
+        @media (max-width: 880px) {
+            body { max-width: 100%; padding: 16px; }
+            #toc-sidebar { display: none; }
+            body.has-toc { padding-right: 16px; }
+        }
+
+        /* Print */
+        @media print {
+            body { max-width: none; padding: 0; }
+            pre { white-space: pre-wrap; }
+            #toc-sidebar { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <article id="content" role="document" aria-label="Rendered markdown content">
+        {{CONTENT}}
+    </article>
+    <script>
+        // PHK Debug: set window._PHK_DEBUG = true before this script runs to enable JS-side logging.
+        // From app: inject via WKWebView.evaluateJavaScript("window._PHK_DEBUG=true")
+        // From CLI: PHK_DEBUG=1 swift run MarkViewHTMLGen adds an enabler script automatically
+        // From tests: page.evaluate(() => window._PHK_DEBUG = true) before setContent()
+        if (typeof window._PHK_DEBUG === 'undefined') { window._PHK_DEBUG = false; }
+        window._PHK_DEBUG && console.log('[PHK] template script starting');
+        // Wrap tables in scrollable containers so wide tables scroll horizontally
+        // instead of clipping at the viewport edge (GitHub Primer pattern)
+        document.querySelectorAll('article table').forEach(function(table) {
+            if (table.parentElement.classList.contains('table-wrapper')) return;
+            var wrapper = document.createElement('div');
+            wrapper.className = 'table-wrapper';
+            table.parentNode.insertBefore(wrapper, table);
+            wrapper.appendChild(table);
+        });
+        // Transform GFM alert callouts: blockquotes starting with [!TYPE]
+        // Handles two forms cmark-gfm produces:
+        //   (a) [!NOTE] alone → <p>[!NOTE]</p> + sibling <p>content</p>  (blank line in source)
+        //   (b) [!NOTE]\nContent → <p>[!NOTE]\nContent</p>               (GitHub standard, no blank line)
+        (function() {
+            var icons   = {note:'ℹ️', tip:'💡', important:'❗', warning:'⚠️', caution:'🔴'};
+            var labels  = {note:'Note', tip:'Tip', important:'Important', warning:'Warning', caution:'Caution'};
+            document.querySelectorAll('article blockquote').forEach(function(bq) {
+                var firstP = bq.querySelector('p');
+                if (!firstP) return;
+                // Match [!TYPE] at the START of the paragraph (not requiring it to be the whole text)
+                var m = firstP.textContent.trim().match(/^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]/i);
+                if (!m) return;
+                var type = m[1].toLowerCase();
+                bq.className = 'alert alert-' + type;
+                // Strip the [!TYPE] marker + any trailing whitespace/newline from innerHTML
+                // to recover the inline content (handles bold, code, links inside the alert)
+                var stripped = firstP.innerHTML
+                    .replace(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*/i, '')
+                    .trim();
+                // Set the title line
+                firstP.innerHTML = '<strong>' + icons[type] + ' ' + labels[type] + '</strong>';
+                firstP.className = 'alert-title';
+                // If content was inline with the marker (form b), inject it after the title
+                if (stripped) {
+                    var contentEl = document.createElement('p');
+                    contentEl.innerHTML = stripped;
+                    firstP.after(contentEl);
+                }
+                // Form (a): sibling paragraphs already exist — no action needed
+            });
+        })();
+        // Inline Prism.js will be loaded here by the app
+
+        // TOC sidebar: build from headings, highlight on scroll.
+        // _markviewRebuildTOC() is exposed so updateContentViaJS() can re-init after
+        // an innerHTML swap — without it, click handlers hold stale detached-element
+        // refs whose offsetTop returns 0, scrolling to the top instead of the section.
+        (function() {
+            var _tocScrollHandler = null; // keep ref so we can remove on re-init
+
+            function _tocInit() {
+                // Remove existing sidebar and scroll listener (re-render safe)
+                var oldSidebar = document.getElementById('toc-sidebar');
+                if (oldSidebar) { oldSidebar.remove(); }
+                document.body.classList.remove('has-toc');
+                if (_tocScrollHandler) {
+                    window.removeEventListener('scroll', _tocScrollHandler);
+                    _tocScrollHandler = null;
+                }
+
+                var headings = Array.from(document.querySelectorAll('article h1,article h2,article h3,article h4'));
+                if (headings.length < 3) return; // don't show TOC for short docs
+
+                // Assign IDs
+                var slugCounts = {};
+                headings.forEach(function(h) {
+                    if (!h.id) {
+                        var slug = h.textContent.toLowerCase()
+                            .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+                        slugCounts[slug] = (slugCounts[slug] || 0) + 1;
+                        h.id = slugCounts[slug] > 1 ? slug + '-' + (slugCounts[slug] - 1) : slug;
+                    }
+                });
+
+                // Build sidebar
+                var sidebar = document.createElement('nav');
+                sidebar.id = 'toc-sidebar';
+                sidebar.setAttribute('aria-label', 'Table of contents');
+                var title = document.createElement('div');
+                title.className = 'toc-title';
+                title.textContent = 'Contents';
+                sidebar.appendChild(title);
+                var ul = document.createElement('ul');
+                var links = [];
+                headings.forEach(function(h) {
+                    var level = parseInt(h.tagName[1]);
+                    var li = document.createElement('li');
+                    var a = document.createElement('a');
+                    a.href = '#' + h.id;
+                    a.textContent = h.textContent;
+                    a.className = 'toc-h' + level;
+                    a.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        // Use window.scrollTo() rather than scrollIntoView() — scrollIntoView()
+                        // is unreliable in WKWebView when a navigation delegate is present.
+                        // offsetTop matches the scroll-spy calculation (window.scrollY + 80).
+                        window.scrollTo({top: Math.max(0, h.offsetTop - 16), behavior: 'smooth'});
+                    });
+                    li.appendChild(a);
+                    ul.appendChild(li);
+                    links.push({el: h, a: a});
+                });
+                sidebar.appendChild(ul);
+                document.body.appendChild(sidebar);
+                document.body.classList.add('has-toc');
+
+                // Highlight active section on scroll
+                var ticking = false;
+                function updateActive() {
+                    var scrollY = window.scrollY + 80;
+                    var active = links[0];
+                    for (var i = 0; i < links.length; i++) {
+                        if (links[i].el.offsetTop <= scrollY) active = links[i];
+                        else break;
+                    }
+                    links.forEach(function(l) { l.a.classList.remove('active'); });
+                    if (active) active.a.classList.add('active');
+                    ticking = false;
+                }
+                _tocScrollHandler = function() {
+                    if (!ticking) { requestAnimationFrame(updateActive); ticking = true; }
+                };
+                window.addEventListener('scroll', _tocScrollHandler, {passive: true});
+                updateActive();
+            }
+
+            _tocInit();
+            window._markviewRebuildTOC = _tocInit;
+        })();
+        // Post render completion to the Swift renderComplete handler (WKWebView only;
+        // window.webkit is undefined in Playwright/Chromium — the try/catch makes it a no-op).
+        // Gated to exactly one post per page load: mermaid .then, mermaid .catch, and the
+        // timeout fallback below may all fire on the same load.
+        window._markviewPostRenderComplete = function() {
+            if (window._renderCompletePosted) { return; }
+            window._renderCompletePosted = true;
+            try { window.webkit.messageHandlers.renderComplete.postMessage(true); } catch (e) {}
+        };
+        // Playwright/WKWebView sentinel: signals that all synchronous transforms are complete.
+        // Mermaid (async) overrides this via HTMLPipeline.injectMermaid -> window.rendered = true.
+        // 1200ms is generous enough for KaTeX + Prism on slow CI runners.
+        setTimeout(function() {
+            if (!window.rendered) {
+                window.rendered = true;
+                window._PHK_DEBUG && console.log('[PHK] sentinel: timeout fired (no Mermaid or Mermaid already done)');
+            }
+            window._markviewPostRenderComplete();
+        }, 1200);
+    </script>
+</body>
+</html>

@@ -1,0 +1,53 @@
+# Task temp and local caches
+.tmp/
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Swift / Xcode
+.build/
+.swiftpm/
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace/xcuserdata/
+xcuserdata/
+
+# App bundles and archives
+*.app
+*.zip
+*.tar.gz
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.idea/
+.vscode/
+
+# Secrets
+.env
+*.p8
+*.provisionprofile
+
+# Local releases, test output and AI configuration
+/release/
+node_modules/
+playwright-report/
+test-results/
+.agents/
+.codex/
+.aws/
+.env.*
+!.env.example
+!.env.template
+
+# Private development records; publish from the curated source snapshot
+/AGENTS.md
+/ROADMAP.md
+/CONTRIBUTING.md
+/archive/
+/docs/RELEASING.md
+/docs/images/README.md

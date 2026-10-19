@@ -1,0 +1,49 @@
+name: MarkView
+configs:
+  Debug: debug
+  Release: release
+  Release-AppStore: release
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  bundleIdPrefix: local.mdos
+  createIntermediateGroups: true
+
+packages:
+  MarkViewCore:
+    path: .
+
+targets:
+  MarkView:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/MarkView
+        excludes:
+          - Info.plist
+          - "*.entitlements"
+    resources:
+      # AppIcon.icns only — template.html, prism-bundle.min.js are
+      # declared in Package.swift MarkViewCore target and bundled as MarkView_MarkViewCore.bundle.
+      - path: Sources/MarkView/Resources/AppIcon.icns
+        buildPhase: resources
+    dependencies:
+      - package: MarkViewCore
+        product: MarkViewCore
+      - package: MarkViewCore
+        product: MarkViewAppCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: local.mdos.app
+        INFOPLIST_FILE: Sources/MarkView/Info.plist
+        CODE_SIGN_ENTITLEMENTS: Sources/MarkView/MarkView.entitlements
+        GENERATE_INFOPLIST_FILE: false
+        PRODUCT_NAME: OneMd
+        SWIFT_VERSION: "6.0"
+        ENABLE_HARDENED_RUNTIME: true
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+      configs:
+        Release-AppStore:
+          CODE_SIGN_IDENTITY: "Apple Distribution"
+          CODE_SIGN_STYLE: Manual

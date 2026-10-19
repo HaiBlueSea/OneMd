@@ -1,0 +1,104 @@
+import Foundation
+import cmark_gfm
+import cmark_gfm_extensions
+
+public final class MarkdownRenderer {
+
+    /// Render markdown string to GFM-compliant HTML
+    public static func renderHTML(from markdown: String) -> String {
+        // Register all GFM extensions — MUST call before using extensions
+        cmark_gfm_core_extensions_ensure_registered()
+
+        let options: Int32 = CMARK_OPT_UNSAFE | CMARK_OPT_SMART | CMARK_OPT_FOOTNOTES | CMARK_OPT_SOURCEPOS
+        guard let parser = cmark_parser_new(options) else { return "" }
+        defer { cmark_parser_free(parser) }
+
+        // Attach all GFM extensions
+        let extensionNames = ["table", "strikethrough", "autolink", "tagfilter", "tasklist"]
+        for name in extensionNames {
+            if let ext = cmark_find_syntax_extension(name) {
+                cmark_parser_attach_syntax_extension(parser, ext)
+            }
+        }
+
+        // Parse
+        cmark_parser_feed(parser, markdown, markdown.utf8.count)
+        guard let doc = cmark_parser_finish(parser) else { return "" }
+        defer { cmark_node_free(doc) }
+
+        // Render to HTML
+        guard let htmlPtr = cmark_render_html(
+            doc, options,
+            cmark_parser_get_syntax_extensions(parser)
+        ) else { return "" }
+        defer { free(htmlPtr) }
+
+        return HTMLSanitizer().sanitize(String(cString: htmlPtr))
+    }
+
+    /// Post-process rendered HTML to add ARIA attributes for accessibility.
+    public static func postProcessForAccessibility(_ html: String) -> String {
+        var result = html
+        // Add role="table" to tables (handles optional sourcepos attributes)
+        result = result.replacingOccurrences(
+            of: "<table(\\s[^>]*)?>",
+            with: "<table$1 role=\"table\">",
+            options: .regularExpression
+        )
+        // Add scope="col" to th elements (handles optional sourcepos/align attributes)
+        result = result.replacingOccurrences(
+            of: "<th(\\s[^>]*)?>",
+            with: "<th$1 scope=\"col\">",
+            options: .regularExpression
+        )
+        // Add aria-label to code blocks (handles optional sourcepos attributes)
+        result = result.replacingOccurrences(
+            of: "<pre(\\s[^>]*)?>",
+            with: "<pre$1 aria-label=\"Code block\">",
+            options: .regularExpression
+        )
+        // Add aria-label to task list checkboxes
+        result = result.replacingOccurrences(
+            of: "<input type=\"checkbox\"",
+            with: "<input type=\"checkbox\" aria-label=\"Task item\""
+        )
+        return result
+    }
+
+    /// Wrap rendered HTML body in a full HTML document.
+    /// If a template is provided, replaces {{CONTENT}}. Otherwise uses built-in template.
+    public static func wrapInTemplate(_ bodyHTML: String, template: String? = nil) -> String {
+        if let template = template {
+            return template.replacingOccurrences(of: TemplateConstants.contentPlaceholder, with: bodyHTML)
+        }
+        return """
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="utf-8">
+            <style>
+                :root { color-scheme: light dark; }
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; max-width: none; width: 100%; margin: 0 auto; padding: 32px; overflow-wrap: anywhere; line-height: 1.6; color: #e6edf3; background: #0d1117; box-sizing: border-box; }
+                \(DarkModeCSS.inlineTemplate)
+                h1, h2 { border-bottom: 1px solid #d1d9e0; padding-bottom: 0.3em; }
+                pre { background: #f6f8fa; padding: 16px; border-radius: 6px; white-space: pre-wrap; overflow-wrap: anywhere; }
+                code { background: #eff1f3; padding: 0.2em 0.4em; border-radius: 6px; font-size: 85%; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+                pre code { background: none; padding: 0; font-size: 100%; display: block; }
+                table { border-spacing: 0; border-collapse: collapse; display: table; width: 100%; table-layout: fixed; font-variant: tabular-nums; }
+                th, td { overflow-wrap: anywhere; padding: 6px 13px; border: 1px solid #d1d9e0; }
+                th { font-weight: 600; }
+                tr { background-color: #ffffff; border-top: 1px solid #d1d9e0b3; }
+                tr:nth-child(2n) { background-color: #f6f8fa; }
+                blockquote { border-left: 4px solid #d0d7de; margin: 0 0 16px 0; padding: 0 16px; color: #656d76; }
+                img { max-width: 100%; }
+                input[type="checkbox"] { margin-right: 0.5em; }
+                hr { border: none; border-top: 1px solid #d0d7de; margin: 24px 0; }
+                a { color: #0969da; text-decoration: none; }
+                a:hover { text-decoration: underline; }
+            </style>
+        </head>
+        <body><article role="document" aria-label="Rendered markdown content">\(bodyHTML)</article></body>
+        </html>
+        """
+    }
+}
