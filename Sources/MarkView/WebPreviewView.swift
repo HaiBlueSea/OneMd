@@ -1,5 +1,6 @@
 import SwiftUI
 import WebKit
+import UniformTypeIdentifiers
 import MarkViewCore
 import MarkViewAppCore
 
@@ -16,19 +17,22 @@ struct WebPreviewView: NSViewRepresentable {
     /// Direct reference to the scroll sync controller (not a SwiftUI binding).
     var syncController: ScrollSyncController?
     var onWebViewCreated: ((WKWebView) -> Void)? = nil
+    var onOpenMarkdown: ((URL) -> Void)? = nil
+    var onLinkError: ((String) -> Void)? = nil
 
     func makeNSView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
         // Security: Do NOT enable allowFileAccessFromFileURLs — it allows JS to fetch
         // arbitrary file:// URLs, which combined with XSS could leak local files.
-        // Local images are loaded via <base href> + allowingReadAccessTo scope instead.
+        // Local images are inlined; WebKit only reads the owned preview directory.
 
         // Register message handler for scroll sync: JS posts source line to Swift.
         let contentController = config.userContentController
         contentController.add(context.coordinator, name: TemplateConstants.scrollSyncHandler)
         // Render completion: page JS posts once per load — drives listener install + restore (MV-002).
         contentController.add(context.coordinator, name: TemplateConstants.renderCompleteHandler)
+        Coordinator.installLocalLinkHandler(in: contentController, coordinator: context.coordinator)
 
         let webView = DocumentWebView(frame: .zero, configuration: config)
         webView.setValue(false, forKey: "drawsBackground")
@@ -36,6 +40,8 @@ struct WebPreviewView: NSViewRepresentable {
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
         context.coordinator.syncController = syncController
+        context.coordinator.onOpenMarkdown = onOpenMarkdown
+        context.coordinator.onLinkError = onLinkError
         webView.documentPath = fileIdentifier
 
         // Register coordinator with the sync controller for direct calls
@@ -57,6 +63,8 @@ struct WebPreviewView: NSViewRepresentable {
         context.coordinator.previewFontSize = previewFontSize
         context.coordinator.theme = theme
         context.coordinator.syncController = syncController
+        context.coordinator.onOpenMarkdown = onOpenMarkdown
+        context.coordinator.onLinkError = onLinkError
         syncController?.previewCoordinator = context.coordinator
 
         context.coordinator.updateContent(html, in: webView)
@@ -77,6 +85,9 @@ struct WebPreviewView: NSViewRepresentable {
         var previewFontSize: Double = 16
         var theme: AppTheme = .system
         weak var syncController: ScrollSyncController?
+        var onOpenMarkdown: ((URL) -> Void)?
+        var onLinkError: ((String) -> Void)?
+        var openExternalURL: (URL) -> Bool = { NSWorkspace.shared.open($0) }
         private var hasLoadedInitialPage = false
         private var lastHTML: String = ""
         private var lastCSS: String = ""
@@ -120,11 +131,37 @@ struct WebPreviewView: NSViewRepresentable {
             HTMLPipeline(prismJS: prismJS)
         }()
 
+        static func installLocalLinkHandler(in controller: WKUserContentController, coordinator: Coordinator) {
+            controller.add(coordinator, contentWorld: .defaultClient, name: TemplateConstants.localLinkHandler)
+            let source = """
+            document.addEventListener('click', function(event) {
+                if (!event.isTrusted || event.button !== 0) return;
+                const link = event.target.closest && event.target.closest('a[href]');
+                if (!link) return;
+                let url;
+                try { url = new URL(link.getAttribute('href'), document.baseURI); } catch (_) { return; }
+                if (url.protocol !== 'file:') return;
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                window.webkit.messageHandlers.\(TemplateConstants.localLinkHandler).postMessage(url.href);
+            }, true);
+            """
+            controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .defaultClient))
+        }
+
         // MARK: - WKScriptMessageHandler
 
         /// Receives source line messages from the JS scroll listener, plus the
         /// once-per-load renderComplete signal.
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == TemplateConstants.localLinkHandler {
+                guard message.frameInfo.isMainFrame, let webView, message.webView === webView,
+                      let source = message.frameInfo.request.url,
+                      source.deletingLastPathComponent() == previewWorkspace?.directory,
+                      let value = message.body as? String, let url = URL(string: value), url.isFileURL else { return }
+                openLocalLink(url, in: webView)
+                return
+            }
             if message.name == TemplateConstants.renderCompleteHandler {
                 handleRenderComplete()
                 return
@@ -144,33 +181,78 @@ struct WebPreviewView: NSViewRepresentable {
 
         // MARK: - WKNavigationDelegate
 
-        /// Intercept link clicks: open external URLs in the system browser,
-        /// allow local file:// loads (preview content) to proceed in-place.
+        /// Only the generated preview loads in WebKit. Clicked local documents
+        /// are handed to the app or the system without expanding file read access.
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
             guard let url = navigationAction.request.url else { return .cancel }
-            let scheme = url.scheme?.lowercased() ?? ""
-            if ["javascript", "data", "vbscript"].contains(scheme) {
-                return .cancel
-            }
-
             if navigationAction.navigationType == .other {
-                return url.isFileURL ? .allow : .cancel
+                return url.isFileURL && url.deletingLastPathComponent() == previewWorkspace?.directory ? .allow : .cancel
             }
+            guard navigationAction.navigationType == .linkActivated else { return .cancel }
 
             if url.isFileURL {
+                // Native handoff comes only from trusted clicks in the isolated
+                // content world. Script-triggered file navigations stay blocked.
                 return .cancel
             }
 
+            let scheme = url.scheme?.lowercased() ?? ""
             if scheme == "https" || scheme == "http" || scheme == "mailto" {
-                NSWorkspace.shared.open(url)
-                return .cancel
+                if !openExternalURL(url) { onLinkError?("无法打开链接：\(url.absoluteString)") }
             }
-
-            if url.fragment != nil && url.path == webView.url?.path {
-                return .allow
-            }
-
             return .cancel
+        }
+
+        private func openLocalLink(_ url: URL, in webView: WKWebView) {
+            guard url.host == nil || url.host == "" || url.host?.lowercased() == "localhost" else {
+                onLinkError?("只支持本机文档链接。")
+                return
+            }
+            if let fragment = URLComponents(url: url, resolvingAgainstBaseURL: true)?.fragment,
+               let path = fileIdentifier,
+               URL(fileURLWithPath: url.path).standardizedFileURL == URL(fileURLWithPath: path).standardizedFileURL {
+                scrollToFragment(fragment, in: webView)
+            } else {
+                openLocalDocument(url)
+            }
+        }
+
+        private func openLocalDocument(_ url: URL) {
+            let file = URL(fileURLWithPath: url.path).standardizedFileURL.resolvingSymlinksInPath()
+            do {
+                let values = try file.resourceValues(forKeys: [.isRegularFileKey, .contentTypeKey])
+                guard values.isRegularFile == true, FileManager.default.isReadableFile(atPath: file.path) else {
+                    onLinkError?("无法读取本地文档：\(file.path)")
+                    return
+                }
+                if MarkdownFile.hasMarkdownExtension(file) {
+                    onOpenMarkdown?(file)
+                } else {
+                    let type = values.contentType
+                    guard !FileManager.default.isExecutableFile(atPath: file.path),
+                          type?.conforms(to: .executable) != true,
+                          type?.conforms(to: .script) != true,
+                          type?.conforms(to: .application) != true else {
+                        onLinkError?("文档链接不能启动应用或可执行脚本。")
+                        return
+                    }
+                    if !openExternalURL(file) { onLinkError?("系统无法打开文档：\(file.path)") }
+                }
+            } catch {
+                onLinkError?("无法打开本地文档：\(file.path)\n\(error.localizedDescription)")
+            }
+        }
+
+        private func scrollToFragment(_ fragment: String, in webView: WKWebView) {
+            let js = """
+            (function() {
+                const id = \(Self.jsStringLiteral(fragment));
+                const target = document.getElementById(id) || document.getElementsByName(id)[0];
+                if (target) window.scrollTo(0, Math.max(0, target.getBoundingClientRect().top + window.scrollY - 16));
+                else if (!id) window.scrollTo(0, 0);
+            })();
+            """
+            webView.evaluateJavaScript(js)
         }
 
         func teardown(_ webView: WKWebView) {
@@ -184,8 +266,11 @@ struct WebPreviewView: NSViewRepresentable {
             webView.navigationDelegate = nil
             webView.configuration.userContentController.removeScriptMessageHandler(forName: TemplateConstants.scrollSyncHandler)
             webView.configuration.userContentController.removeScriptMessageHandler(forName: TemplateConstants.renderCompleteHandler)
+            webView.configuration.userContentController.removeScriptMessageHandler(forName: TemplateConstants.localLinkHandler, contentWorld: .defaultClient)
             webView.loadHTMLString("", baseURL: nil)
             self.webView = nil
+            onOpenMarkdown = nil
+            onLinkError = nil
             syncController?.previewCoordinator = nil
         }
 
@@ -452,7 +537,13 @@ struct WebPreviewView: NSViewRepresentable {
             if css.isEmpty { return html }
 
             let styleTag = "<style id=\"\(TemplateConstants.settingsStyleID)\">\(css)</style>"
-            return html.replacingOccurrences(of: "</head>", with: "\(styleTag)\n</head>")
+            // The HTML lives in an owned temporary directory. Resolve links against
+            // the actual Markdown file, including relative paths and #fragments.
+            let baseTag = fileIdentifier.map {
+                let href = URL(fileURLWithPath: $0).absoluteString.replacingOccurrences(of: "&", with: "&amp;")
+                return "<base href=\"\(href)\">"
+            } ?? ""
+            return html.replacingOccurrences(of: "</head>", with: "\(baseTag)\n\(styleTag)\n</head>")
         }
 
         private func updateContentViaJS(_ html: String, in webView: WKWebView) {

@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-TASK = ROOT / (".tmp/sidebar-drag-fix" if "--sidebar-only" in sys.argv else ".tmp/ui-resource-review")
+TASK = ROOT / (".tmp/sidebar-drag-fix" if "--sidebar-only" in sys.argv else ".tmp/document-links" if "--links-only" in sys.argv else ".tmp/ui-resource-review")
 TASK.mkdir(parents=True, exist_ok=True)
 subprocess.run(["swift", "build", "-c", "release", "--product", "OneMd"], cwd=ROOT, check=True)
 BUILD = (ROOT / ".build/release").resolve()
@@ -26,7 +26,7 @@ while i < len(args):
     else:
         i += 1
 objects = [line for line in (BUILD / "OneMd.product/Objects.LinkFileList").read_text().splitlines() if "/OneMd.build/" not in line]
-sources = ["Tests/MDOSRegressionTests/main.swift", "Tests/MDOSRegressionTests/SidebarResizeTests.swift", "Sources/MarkView/WindowFrameAutosave.swift", "Sources/MarkView/WebPreviewView.swift", "Sources/MarkView/EditorView.swift", "Sources/MarkView/ScrollSyncController.swift", "Sources/MarkView/Strings.swift", "Sources/MarkView/AppLogger.swift"]
+sources = ["Tests/MDOSRegressionTests/main.swift", "Tests/MDOSRegressionTests/SidebarResizeTests.swift", "Tests/MDOSRegressionTests/DocumentLinkTests.swift", "Sources/MarkView/WindowFrameAutosave.swift", "Sources/MarkView/WebPreviewView.swift", "Sources/MarkView/EditorView.swift", "Sources/MarkView/ScrollSyncController.swift", "Sources/MarkView/Strings.swift", "Sources/MarkView/AppLogger.swift"]
 binary = TASK / "MDOSRegressionTests"
 subprocess.run(["swiftc", "-O", "-I", str(BUILD / "Modules"), *flags, *sources, *objects, "-o", str(binary)], cwd=ROOT, check=True)
 # A separate executable gives UserDefaults a separate process domain.

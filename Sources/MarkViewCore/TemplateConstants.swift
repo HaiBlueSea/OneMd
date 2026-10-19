@@ -18,6 +18,7 @@ public enum TemplateConstants {
     /// - WebPreviewView: registers handler with this name
     /// - scrollListenerJS: posts messages to this handler
     public static let scrollSyncHandler = "scrollSync"
+    public static let localLinkHandler = "openLocalDocument"
 
     /// WKWebView message handler name for render completion. Posted (once per load,
     /// gated by window._renderCompletePosted) from the same sites that set the

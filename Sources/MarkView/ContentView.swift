@@ -134,7 +134,9 @@ private struct ActiveTabView: View {
                                 previewFontSize: settings.previewFontSize,
                                 theme: settings.theme,
                                 syncController: syncController,
-                                onWebViewCreated: { viewModel.previewWebView = $0 }
+                                onWebViewCreated: { viewModel.previewWebView = $0 },
+                                onOpenMarkdown: openLinkedMarkdown,
+                                onLinkError: { errorPresenter.show("无法打开链接", detail: $0) }
                             )
                             .id(tab.id)
                             .frame(minWidth: 200, idealWidth: .infinity, maxWidth: .infinity)
@@ -148,7 +150,9 @@ private struct ActiveTabView: View {
                             previewFontSize: settings.previewFontSize,
                             theme: settings.theme,
                             syncController: syncController,
-                            onWebViewCreated: { viewModel.previewWebView = $0 }
+                            onWebViewCreated: { viewModel.previewWebView = $0 },
+                            onOpenMarkdown: openLinkedMarkdown,
+                            onLinkError: { errorPresenter.show("无法打开链接", detail: $0) }
                         )
                         .id(tab.id)
                     }
@@ -280,6 +284,11 @@ private struct ActiveTabView: View {
                 registerFileInWindow(url.path)
             }
         }
+    }
+
+    private func openLinkedMarkdown(_ url: URL) {
+        tabManager.openFile(url)
+        registerFileInWindow(url.path)
     }
 
     private func registerFileInWindow(_ path: String) {

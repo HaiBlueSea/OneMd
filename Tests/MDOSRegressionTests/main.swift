@@ -12,8 +12,17 @@ if CommandLine.arguments.contains("--sidebar-only") {
     print("RESULT failures=\(failures)")
     exit(failures == 0 ? 0 : 1)
 }
+if CommandLine.arguments.contains("--links-only") {
+    MainActor.assumeIsolated {
+        NSApplication.shared.setActivationPolicy(.prohibited)
+        runDocumentLinkTests(root: root, check: check)
+    }
+    print("RESULT failures=\(failures)")
+    exit(failures == 0 ? 0 : 1)
+}
 @MainActor func check(_ ok: Bool, _ name: String) {
     print("\(ok ? "PASS" : "FAIL") \(name)")
+    fflush(nil)
     if !ok { failures += 1 }
 }
 func spin(_ seconds: Double) {
@@ -55,6 +64,7 @@ watcher.stop()
 MainActor.assumeIsolated {
     let app = NSApplication.shared
     app.setActivationPolicy(.prohibited)
+    runDocumentLinkTests(root: root, check: check)
     check(AppTheme.allCases.count == 9, "nine theme options")
     for theme in AppTheme.allCases {
         let tokens = theme.tokens(systemIsDark: true)
@@ -239,8 +249,10 @@ final class LifetimeProbe {
         _ = wait { model.isLoaded }
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent()
-        let web = DocumentWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 600), configuration: config)
         let coordinator = WebPreviewView.Coordinator()
+        WebPreviewView.Coordinator.installLocalLinkHandler(in: config.userContentController, coordinator: coordinator)
+        let web = DocumentWebView(frame: NSRect(x: 0, y: 0, width: 900, height: 600), configuration: config)
+        coordinator.onOpenMarkdown = { _ in model.contentDidChange("linked document") }
         let sync = ScrollSyncController()
         coordinator.webView = web
         coordinator.syncController = sync

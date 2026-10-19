@@ -4,7 +4,7 @@
 
 左侧只放已打开的文件，右侧默认显示预览；按 `⌘E` 切换源码与预览双栏。适合阅读项目文档、整理笔记，以及边写边看 Markdown。
 
-**macOS 14+ · Apple Silicon · MIT · 0.1.0 预发布**
+**macOS 14+ · Apple Silicon · MIT**
 
 ![OneMd 深色阅读界面：已打开文件列表、Markdown 预览与目录](docs/images/preview-dark.png)
 
@@ -14,6 +14,7 @@
 - **随时编辑**：源码／预览双栏、实时渲染、滚动同步、Prism 代码高亮。
 - **多文件工作**：批量打开 Markdown、切换文件、拖动调整侧栏；下次启动恢复文件列表及选中项。
 - **保护修改**：手动保存；外部修改自动重载，有未保存修改时提示冲突；关闭和退出前确认。
+- **本机文档链接**：Markdown 在 OneMd 内打开，PDF 等其他文档交给系统默认应用；支持相对路径、绝对路径和 `file:///`。
 - **切换外观**：Dark、Light、System、Dracula、Nord、One Dark、Tokyo Night、Catppuccin Mocha、Solarized Light，共 9 种选项。
 - **本地使用**：无需账号、订阅或后台服务；内置渲染资源，可离线阅读本地文档。
 
@@ -30,7 +31,7 @@
 
 ## 下载与安装
 
-从 [v0.1.0 Release](https://github.com/HaiBlueSea/OneMd/releases/tag/v0.1.0) 下载 [OneMd-0.1.0-macos-arm64.zip](https://github.com/HaiBlueSea/OneMd/releases/download/v0.1.0/OneMd-0.1.0-macos-arm64.zip)。GitHub 自动生成的 `Source code` 压缩包仅含源码，需要自行构建。
+从 [v0.2.0 Release](https://github.com/HaiBlueSea/OneMd/releases/tag/v0.2.0) 下载 [OneMd-0.2.0-macos-arm64.zip](https://github.com/HaiBlueSea/OneMd/releases/download/v0.2.0/OneMd-0.2.0-macos-arm64.zip)。GitHub 自动生成的 `Source code` 压缩包仅含源码，需要自行构建。
 
 1. 解压 ZIP，把 `OneMd.app` 拖入「应用程序」。
 2. 双击启动，按 `⌘O` 选择一个或多个 Markdown 文件。
@@ -67,13 +68,15 @@ open -a OneMd /path/to/a.md /path/to/b.md
 
 遇到外部修改冲突时，可保留当前修改、重新加载磁盘内容，或在保存冲突提示中明确覆盖。未保存内容只在本次运行内保留，**会话恢复不恢复崩溃／强制退出前的草稿**。首次试用建议使用文档副本。
 
+可点击 `[另一份笔记](./examples/Notes.md)`、`[PDF](<./参考 文档.pdf>)` 或 `[本机文件](file:///path/to/note.md)`；路径按当前文档位置解析。可打开 [链接示例](examples/Links.md) 试用。文件不存在或系统无法打开时会提示。当前文档的 `#标题` 链接可定位；跨文件标题片段暂不定位，纯文本路径不会自动变成链接。
+
 ## 边界与隐私
 
 当前聚焦已有 Markdown 文件的阅读和编辑，不提供目录树、云同步、Mermaid／数学公式渲染、PDF／HTML 导出、MCP 或 Quick Look 扩展。
 
 应用不内置遥测、崩溃上传或自动更新。文档中的远程图片仍可能请求第三方服务器；点击外部链接会交给系统默认应用。预览会过滤常见危险 HTML，本地图片限制在文档目录及其子目录，但这不等于完整的恶意文档隔离。完整说明见 [安全与隐私](SECURITY.md)。
 
-当前为早期预发布。软件按 MIT 许可证「按原样」提供，不承诺无缺陷或适合特定用途；重要文档请保留备份。已知验证边界见 [版本说明](docs/releases/0.1.0.md)。
+当前为早期预发布。软件按 MIT 许可证「按原样」提供，不承诺无缺陷或适合特定用途；重要文档请保留备份。已知验证边界见 [版本说明](docs/releases/0.2.0.md)。
 
 ## 从源码构建
 
@@ -93,6 +96,7 @@ open build/OneMd.app
 ```bash
 python3 scripts/test_mdos.py --quick         # 文件保护、原生预览与主题
 python3 scripts/test_mdos.py --sidebar-only  # 侧栏拖动与布局
+python3 scripts/test_mdos.py --links-only    # 真实 WebKit 本地文档链接
 python3 scripts/test_mdos.py                 # 另含释放循环与 60 秒资源观测
 ```
 
